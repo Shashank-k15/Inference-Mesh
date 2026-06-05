@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [
+    "src/protocol",
+    "src/compute",
+    "src/p2p",
+    "src/cli",
+    "tests",
+]
+
+[workspace.dependencies]
+anyhow = "1"
+tracing = "0.1"
+futures = "0.3"
+async-trait = "0.1"
+rand = "0.8"
+bytes = "1"
+hex = "0.4"
+tokio = { version = "1", features = ["full"] }
+libp2p = { version = "0.54", features = [
+    "quic", "noise", "kad", "request-response", "identify",
+    "autonat", "relay", "dcutr", "tcp", "yamux", "macros", "tokio",
+] }
+capnp = "0.25.5"
+candle-core = "0.10.2"
+candle-nn = "0.10.2"
+safetensors = "0.7.0"
+clap = { version = "4", features = ["derive"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

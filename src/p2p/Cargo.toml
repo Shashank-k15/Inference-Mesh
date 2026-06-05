@@ -1,0 +1,17 @@
+[package]
+name = "inferencemesh-p2p"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+compute = ["dep:inferencemesh-compute"]
+
+[dependencies]
+inferencemesh-protocol = { path = "../protocol" }
+inferencemesh-compute = { path = "../compute", optional = true }
+libp2p = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true }

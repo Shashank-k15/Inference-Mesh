@@ -1,0 +1,11 @@
+[package]
+name = "inferencemesh-compute"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+inferencemesh-protocol = { path = "../protocol" }
+candle-core = { workspace = true }
+candle-nn = { workspace = true }
+safetensors = { workspace = true }
+anyhow = { workspace = true }

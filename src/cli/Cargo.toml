@@ -1,0 +1,20 @@
+[package]
+name = "inferencemesh-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "inferencemesh"
+path = "src/main.rs"
+
+[dependencies]
+inferencemesh-p2p = { path = "../p2p", features = ["compute"] }
+inferencemesh-compute = { path = "../compute" }
+inferencemesh-protocol = { path = "../protocol" }
+libp2p = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+candle-core = { workspace = true }

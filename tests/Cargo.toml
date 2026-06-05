@@ -1,0 +1,45 @@
+[package]
+name = "inferencemesh-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# This crate exists only for integration tests.
+# It has no lib or bin targets.
+[lib]
+name = "inferencemesh_tests"
+path = "lib.rs"
+
+[[test]]
+name = "loopback_test"
+path = "loopback_test.rs"
+
+[[test]]
+name = "chaos_test"
+path = "chaos_test.rs"
+
+[[test]]
+name = "concurrency_test"
+path = "concurrency_test.rs"
+
+[[test]]
+name = "math_parity_test"
+path = "math_parity_test.rs"
+
+[[test]]
+name = "memory_test"
+path = "memory_test.rs"
+
+[dependencies]
+inferencemesh-p2p = { path = "../src/p2p", features = ["compute"] }
+inferencemesh-compute = { path = "../src/compute" }
+inferencemesh-protocol = { path = "../src/protocol" }
+
+anyhow = { workspace = true }
+futures = { workspace = true }
+rand = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+candle-core = { workspace = true }
+libp2p = { workspace = true }
