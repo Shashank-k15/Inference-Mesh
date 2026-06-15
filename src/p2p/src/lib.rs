@@ -1,5 +1,9 @@
 pub mod behaviour;
+pub mod block_selection;
 pub mod dht;
+pub mod ping;
 pub mod provider_cache;
 pub mod routing;
+pub mod sequence_manager;
 pub mod swarm;
+pub mod types;

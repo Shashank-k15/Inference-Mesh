@@ -13,6 +13,21 @@ struct ForwardPassResponse {
     tensor   @1 :Tensor;
 }
 
+struct InferenceSessionRequest {
+    sessionId     @0 :Text;
+    stepId        @1 :Text;
+    stepCount     @2 :UInt64;
+    maxNewTokens  @3 :UInt32;
+    positionIds   @4 :List(UInt64);
+    inputs        @5 :Tensor;
+}
+
+struct InferenceSessionResponse {
+    sessionId @0 :Text;
+    stepId    @1 :Text;
+    outputs   @2 :Tensor;
+}
+
 struct Tensor {
     dtype @0 :Dtype;
     shape @1 :List(UInt64);
@@ -24,3 +39,4 @@ enum Dtype {
     bf16 @1;
     f32 @2;
 }
+

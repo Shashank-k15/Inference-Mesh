@@ -27,3 +27,4 @@ candle-nn = "0.10.2"
 safetensors = "0.7.0"
 clap = { version = "4", features = ["derive"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokenizers = "0.19"

@@ -1,88 +1,133 @@
 # InferenceMesh
 
-A decentralized, peer-to-peer pipeline-parallel inference network written in Rust. Inspired by [Petals](https://github.com/bigscience-workshop/petals), optimized for low-latency systems-level performance, zero-copy memory operations, and robust connection pooling.
+A decentralized peer-to-peer pipeline-parallel inference network written in Rust. Split large language models across machines and run inference collaboratively — BitTorrent-style.
 
 ## Architecture
 
-InferenceMesh splits large language models (LLMs) across a heterogeneous network of nodes. Each node hosts a subset of transformer blocks and participates in a pipeline-parallel forward pass:
-
 ```
-[Client] → (Embeddings) → [Node A: Layers 1-10] → [Node B: Layers 11-20] → [Node C: Layers 21-30] → [Client] (LM Head)
-```
-
-### Core Flow
-
-1. **Client** tokenizes input, runs the embedding layer locally, and produces hidden states.
-2. **Route Resolution** via Kademlia DHT — discover which peers host the required layers.
-3. **Pipeline Forward Pass** — hidden states are piped through the chain over QUIC connections.
-4. **Client** receives final hidden states, runs the LM head, and samples the next token.
-
-## Tech Stack
-
-| Component        | Crate                       | Purpose                                                    |
-| ---------------- | --------------------------- | ---------------------------------------------------------- |
-| P2P Networking   | `rust-libp2p`               | Identity, NAT traversal, Kademlia DHT, encrypted transport |
-| Data Transport   | QUIC (via libp2p)           | Multiplexed, low-latency UDP streams                       |
-| Serialization    | `capnp` (Cap'n Proto)       | Zero-copy tensor serialization                             |
-| Inference Engine | `candle-core` / `candle-nn` | Pure-Rust ML framework with CUDA/Metal/CPU backends        |
-| Async Runtime    | `tokio`                     | Multi-threaded async executor                              |
-
-## Project Structure
-
-```
-src/
-├── protocol/   # Cap'n Proto schemas, codec, request/response types
-├── compute/    # Candle-based transformer block execution engine
-├── p2p/        # libp2p swarm, DHT, routing, provider cache
-└── cli/        # Binary entry point (bootstrap, worker, client modes)
-
-tests/          # Integration tests (loopback, chaos, concurrency, math parity, memory)
-docs/           # Architecture documentation and specs
-examples/       # Usage examples
+                    Kademlia DHT (bootstrap node)
+                         │
+            ┌────────────┼────────────┐
+            │            │            │
+       [Worker A]   [Worker B]   [Worker C]
+      Layers 0-7    Layers 8-15   Layers 16-23
+            │            │            │
+            └────────────┴────────────┘
+                         │
+                      [Client]
+              (embeddings + LM head)
 ```
 
-## Building
+Each worker downloads a subset of transformer blocks, announces them on the DHT, and processes hidden states piped through the chain over QUIC or TCP.
+
+## Quick Start
+
+### 1. Build
 
 ```bash
-cargo build --workspace
+git clone git@github.com:Shashank-k15/Inference-Mesh.git
+cd Inference-Mesh
+cargo build --release
 ```
 
-## Running
+The binary is at `target/release/inferencemesh`.
 
-### Bootstrap Node
+### 2. Start a bootstrap node
+
+The bootstrap node is the rendezvous point. Start one on a machine with a public IP:
 
 ```bash
-cargo run -- bootstrap --port 9000
+inferencemesh bootstrap --port 9000
 ```
 
-### Worker Node
+Note the peer ID printed on startup — workers and clients will need the bootstrap address.
+
+### 3. Download a model
+
+InferenceMesh uses HuggingFace-format models with safetensors weights. Download any Llama-architecture model:
 
 ```bash
-cargo run -- worker --bootstrap /ip4/BOOTSTRAP_IP/tcp/9000 --layers 1-10 --port 9001
+# Option A: Use huggingface-cli
+pip install huggingface_hub
+huggingface-cli download meta-llama/Llama-3.2-1B --local-dir ./models/llama-3.2-1b
+
+# Option B: Clone via git (requires token for gated models)
+git clone https://huggingface.co/meta-llama/Llama-3.2-1B ./models/llama-3.2-1b
 ```
 
-With model weights:
+The directory must contain `config.json` and `model.safetensors` (or a safetensors index plus shards).
+
+> **Supported architectures**: Any model using the standard Llama layout (RMSNorm, RoPE, GQA, SwiGLU MLP). This includes Llama 3/3.1/3.2, Mistral, Qwen, and Phi — anything with `model.layers.{N}.self_attn.q_proj` weight naming.
+
+### 4. Launch workers
+
+Run one worker per GPU or machine. Each worker loads a subset of layers determined by `--layers`:
+Here is a possible configuration.
+
+**Machine A (layers 0–7):**
 
 ```bash
-cargo run -- worker --bootstrap /ip4/BOOTSTRAP_IP/tcp/9000 --layers 1-10 --model-path ./model/ --device cuda --port 9001
+inferencemesh worker \
+  --bootstrap /ip4/192.168.1.10/tcp/9000 \
+  --layers 0-7 \
+  --model-path ./models/llama-3.2-1b \
+  --device cuda \
+  --port 9100
 ```
 
-### Client
+**Machine B (layers 8–15):**
 
 ```bash
-cargo run -- client --bootstrap /ip4/BOOTSTRAP_IP/tcp/9000 --chain 1,2,3,4,5
+inferencemesh worker \
+  --bootstrap /ip4/192.168.1.10/tcp/9000 \
+  --layers 8-15 \
+  --model-path ./models/llama-3.2-1b \
+  --device cuda \
+  --port 9200
 ```
 
-## Testing
+**Machine C (layers 16–23):**
 
 ```bash
-# All tests
-cargo test --workspace
+inferencemesh worker \
+  --bootstrap /ip4/192.168.1.10/tcp/9000 \
+  --layers 16-23 \
+  --model-path ./models/llama-3.2-1b \
+  --device cuda \
+  --port 9300
+```
 
-# Specific integration tests
-cargo test --test loopback_test
-cargo test --test math_parity_test
-cargo test --test memory_test
-cargo test --test chaos_test
-cargo test --test concurrency_test
+> **How many blocks to host?** The system auto-selects based on available GPU memory. Omit `--layers` to fill the GPU automatically, or specify a range to control it manually. A Llama 3.2 1B model has 16 hidden layers — split across 3 machines at ~5–6 layers each.
+
+> **CPU-only fallback:** Omit `--device cuda` to run on CPU. Useful for testing but slow for real inference.
+
+> **Echo mode (no model):** Omit `--model-path` to run in echo mode — the worker mirrors hidden states back untouched. Perfect for network testing without downloading models.
+
+### 5. Check the swarm
+
+Once workers announce their layers, the swarm is live. Each worker will log:
+
+```
+Worker announcing layers 0-7
+Worker bootstrapped
+```
+
+### 6. Submit test inference
+
+```bash
+inferencemesh client \
+  --bootstrap /ip4/127.0.0.1/tcp/9000 \
+  --chain 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23 \
+  --model-path ./Models \
+  --prompt "repeat a 5 times" \
+  --max-tokens 20
+```
+
+The client discovers which workers host each layer via the DHT, builds a chain, and sends a test payload through the pipeline. You'll see:
+
+```
+Client: found provider for layer 0: PeerId(...)
+Client: resolved chain: [PeerId(...), PeerId(...), PeerId(...)]
+Client: sending forward pass to PeerId(...)
+Client: received response for request_id 1
 ```

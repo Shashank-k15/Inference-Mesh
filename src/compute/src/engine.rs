@@ -4,11 +4,13 @@ use std::path::Path;
 use candle_core::{DType, Device, Result, Tensor};
 
 use crate::block::TransformerBlock;
+use crate::types::ModelConfig;
 use inferencemesh_protocol::Dtype as DimDtype;
 
 pub struct ComputeEngine {
     device: Device,
     blocks: HashMap<u32, TransformerBlock>,
+    config: Option<ModelConfig>,
 }
 
 impl ComputeEngine {
@@ -16,18 +18,21 @@ impl ComputeEngine {
         Self {
             device,
             blocks: HashMap::new(),
+            config: None,
         }
     }
 
     pub fn load_blocks(
         &mut self,
         model_path: &Path,
+        config: &ModelConfig,
         start_layer: u32,
         end_layer: u32,
     ) -> Result<()> {
+        self.config = Some(config.clone());
         for layer in start_layer..=end_layer {
             let block =
-                TransformerBlock::load_from_safetensors(model_path, layer, &self.device)?;
+                TransformerBlock::load_from_safetensors(model_path, config, layer, &self.device)?;
             self.blocks.insert(layer, block);
         }
         Ok(())
@@ -87,7 +92,6 @@ impl ComputeEngine {
             return Ok(vec![]);
         }
 
-        // All entries must have the same dtype and shape for stacking
         let candle_dtype = match entries[0].1 {
             DimDtype::F32 => DType::F32,
             DimDtype::F16 => DType::F16,
@@ -100,7 +104,13 @@ impl ComputeEngine {
             let t = Tensor::from_raw_buffer(data, candle_dtype, &ushape, &self.device)?;
             tensors.push(t);
         }
-        let batch = Tensor::stack(&tensors.iter().collect::<Vec<_>>(), 0)?;
+        // For a single entry the tensor already carries its batch dimension
+        // (e.g. [1, seq, hidden]).  Tensor::stack would add a redundant one.
+        let batch = if tensors.len() == 1 {
+            tensors.into_iter().next().unwrap()
+        } else {
+            Tensor::stack(&tensors.iter().collect::<Vec<_>>(), 0)?
+        };
 
         let mask = match (mask_data, mask_dtype, mask_shape) {
             (Some(md), Some(mdt), Some(ms)) => {
@@ -120,7 +130,6 @@ impl ComputeEngine {
             current = self.forward(layer, &current, mask.as_ref())?;
         }
 
-        // Split back: [B, ...] -> B × [...]
         let b = current.dims()[0];
         let mut outputs: Vec<Vec<f32>> = Vec::with_capacity(b);
         for i in 0..b {
